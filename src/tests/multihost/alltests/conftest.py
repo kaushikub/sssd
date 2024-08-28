@@ -224,7 +224,7 @@ def enable_sss_sudo_nsswitch(session_multihost, request):
         cmd = 'authselect select sssd with-sudo'
         session_multihost.client[0].run_command(cmd)
     else:
-        backup = 'cp -af /etc/nsswitch.conf /etc/nsswitch.conf.backup'
+        backup = 'cp -pZf /etc/nsswitch.conf /etc/nsswitch.conf.backup'
         session_multihost.client[0].run_command(backup)
         content = '\nsudoers: files sss\n'
         session_multihost.client[0].put_file_contents(content,
@@ -236,7 +236,7 @@ def enable_sss_sudo_nsswitch(session_multihost, request):
             cmd = 'authselect select sssd'
             session_multihost.client[0].run_command(cmd)
         else:
-            restore = 'cp -f /etc/nsswitch.conf.backup /etc/nsswitch.conf'
+            restore = 'cp -pZf /etc/nsswitch.conf.backup /etc/nsswitch.conf'
             session_multihost.client[0].run_command(restore)
     request.addfinalizer(restore_nsswitch)
 
@@ -317,7 +317,7 @@ def add_nisobject(session_multihost, request):
     nfs_server = session_multihost.master[0].external_hostname
     client_ip = session_multihost.client[0].ip
     server = sssdTools(session_multihost.master[0])
-    bkup = 'cp -af /etc/exports /etc/exports.backup'
+    bkup = 'cp -pZf /etc/exports /etc/exports.backup'
     session_multihost.master[0].run_command(bkup)
     server.export_nfs_fs(share_list, client_ip)
     start_nfs = 'systemctl start nfs-server'
@@ -342,7 +342,7 @@ def add_nisobject(session_multihost, request):
         assert ret == 'Success'
         remove_share = 'rm -rf %s' % request.param
         session_multihost.master[0].run_command(remove_share)
-        restore = 'cp -f /etc/exports.backup /etc/exports'
+        restore = 'cp -pZf /etc/exports.backup /etc/exports'
         session_multihost.master[0].run_command(restore)
         stop_nfs = "systemctl stop nfs-server"
         try:
@@ -407,7 +407,7 @@ def indirect_nismaps(session_multihost, request, create_etc_exports):
         # remove /projects
         remove_projects = 'rm -rf /projects'
         session_multihost.master[0].run_command(remove_projects)
-        restore = 'cp -f /etc/exports.backup /etc/exports'
+        restore = 'cp -pZf /etc/exports.backup /etc/exports'
         session_multihost.master[0].run_command(restore)
         stop_nfs = "systemctl stop nfs-server"
         try:
@@ -852,7 +852,7 @@ def template_sssdconf(session_multihost, request):
 def setup_kerberos(session_multihost, request):
     """ Setup kerberos """
     tools = sssdTools(session_multihost.master[0])
-    backup_krb5_conf = 'cp -f /etc/krb5.conf /etc/krb5.conf.orig'
+    backup_krb5_conf = 'cp -pZf /etc/krb5.conf /etc/krb5.conf.orig'
     session_multihost.master[0].run_command(backup_krb5_conf)
     tools.config_etckrb5('EXAMPLE.TEST')
     tools.enable_kcm()
@@ -864,7 +864,7 @@ def setup_kerberos(session_multihost, request):
         krb.destroy_krb5server()
         remove_keytab = 'rm -f /etc/krb5.keytab'
         session_multihost.master[0].run_command(remove_keytab)
-        restore_krb5 = 'cp -f /etc/krb5.conf.orig /etc/krb5.conf'
+        restore_krb5 = 'cp -pZf /etc/krb5.conf.orig /etc/krb5.conf'
         session_multihost.master[0].run_command(restore_krb5)
     request.addfinalizer(remove_kerberos)
 
@@ -897,7 +897,7 @@ def setup_ds_sasl(session_multihost, request):
 def setup_sssd(session_multihost, setupds,  # pylint: disable=unused-argument
                setup_kerberos, request):  # pylint: disable=unused-argument
     """ Configure sssd.conf """
-    backup_krb5 = "cp -f /etc/krb5.conf /etc/krb5.conf.orig"
+    backup_krb5 = "cp -pZf /etc/krb5.conf /etc/krb5.conf.orig"
     session_multihost.client[0].run_command(backup_krb5)
     tools = sssdTools(session_multihost.client[0])
     krb5_server = session_multihost.master[0].sys_hostname
@@ -928,7 +928,7 @@ def setup_sssd(session_multihost, setupds,  # pylint: disable=unused-argument
         removeconf = 'rm -f %s' % (SSSD_DEFAULT_CONF)
         session_multihost.client[0].run_command(removeconf)
         # revert the krb5.conf
-        restore_krb5 = 'cp -f /etc/krb5.conf.orig /etc/krb5.conf'
+        restore_krb5 = 'cp -pZf /etc/krb5.conf.orig /etc/krb5.conf'
         session_multihost.client[0].run_command(restore_krb5)
     request.addfinalizer(removesssd)
 
@@ -1191,54 +1191,18 @@ def write_journalsssd(session_multihost, request):
     contents = "DEBUG_LOGGER=--logger=journald"
     session_multihost.client[0].put_file_contents('/etc/sysconfig/sssd',
                                                   contents)
-    start_journald = 'systemctl start systemd-journald'
-    session_multihost.client[0].run_command(start_journald)
+    restart_journald = 'systemctl restart systemd-journald'
+    session_multihost.client[0].run_command(restart_journald)
 
     def remove_journalsssd():
         """ Remove  /etc/sysconfig/sssd"""
         cmd = 'rm -f /etc/sysconfig/sssd'
-        stop_journald = 'systemctl stop systemd-journald'
+        restart_journald = 'systemctl restart systemd-journald'
         restart_sssd = 'systemctl restart sssd'
         session_multihost.client[0].run_command(cmd)
-        session_multihost.client[0].run_command(stop_journald)
+        session_multihost.client[0].run_command(restart_journald)
         session_multihost.client[0].run_command(restart_sssd)
     request.addfinalizer(remove_journalsssd)
-
-
-@pytest.fixture(scope='class')
-def update_journald_conf(session_multihost, request):
-    """
-    Update journald.conf
-    To turn off any kind of rate limiting, set RateLimitIntervalSec value to 0.
-    """
-    cmd = session_multihost.client[0].run_command(
-        'test -f /etc/systemd/journald.conf', raiseonerr=False)
-    if cmd.returncode == 0:
-        j_config = '/etc/systemd/journald.conf'
-    else:
-        j_config = '/usr/lib/systemd/journald.conf'
-
-    bkup_cmd = f'cp -f {j_config} /tmp/journald.conf.bkup'
-    session_multihost.client[0].run_command(bkup_cmd, raiseonerr=False)
-    up_ratelimit = 'RateLimitIntervalSec=0'
-    journald_conf = session_multihost.client[0].get_file_contents(
-        j_config)
-    if isinstance(journald_conf, bytes):
-        contents = journald_conf.decode('utf-8')
-    else:
-        contents = journald_conf
-    contents = contents.replace(up_ratelimit, '') + up_ratelimit
-    session_multihost.client[0].put_file_contents(j_config, contents)
-    session_multihost.client[0].run_command(
-        "systemctl daemon-reload", raiseonerr=False)
-    session_multihost.client[0].run_command(
-        "systemctl restart systemd-journald", raiseonerr=False)
-
-    def restore_journalsssd():
-        """ Restore journalsssd.conf """
-        bkup_cmd = f'cp -f /tmp/journald.conf.bkup {j_config}'
-        session_multihost.client[0].run_command(bkup_cmd)
-    request.addfinalizer(restore_journalsssd)
 
 
 @pytest.fixture(scope="class")
@@ -1456,7 +1420,7 @@ def enable_sssd_hostmap(session_multihost, request):
     if not has_user_nsswith:
         nsswitch_file = "/etc/nsswitch.conf"
 
-    bkup = f'cp -vf {nsswitch_file} {nsswitch_file}_bkp'
+    bkup = f'cp -pZvf {nsswitch_file} {nsswitch_file}_bkp'
     session_multihost.client[0].run_command(bkup)
 
     for value in ['hosts', 'networks']:
@@ -1467,7 +1431,7 @@ def enable_sssd_hostmap(session_multihost, request):
         session_multihost.client[0].run_command(authselect)
 
     def restore_nsswitch():
-        restore = f"cp -vf {nsswitch_file}_bkp {nsswitch_file}"
+        restore = f"cp -pZvf {nsswitch_file}_bkp {nsswitch_file}"
         session_multihost.client[0].run_command(restore)
         if has_user_nsswith:
             session_multihost.client[0].run_command(authselect)
@@ -1608,6 +1572,41 @@ def ns_account_lock(session_multihost, request):
     request.addfinalizer(restoresssdconf)
 
 # ====================  Session Scoped Fixtures ================
+@pytest.fixture(scope='session', autouse=True)
+def update_journald_conf(session_multihost, request):
+    """
+    Update journald.conf
+    To turn off any kind of rate limiting, set RateLimitIntervalSec value to 0.
+    """
+    cmd = session_multihost.client[0].run_command(
+        'test -f /etc/systemd/journald.conf', raiseonerr=False)
+    if cmd.returncode == 0:
+        j_config = '/etc/systemd/journald.conf'
+    else:
+        j_config = '/usr/lib/systemd/journald.conf'
+
+    bkup_cmd = f'cp -pZf {j_config} /tmp/journald.conf.bkup'
+    session_multihost.client[0].run_command(bkup_cmd, raiseonerr=False)
+    up_ratelimit = 'RateLimitIntervalSec=0'
+    journald_conf = session_multihost.client[0].get_file_contents(
+        j_config)
+    if isinstance(journald_conf, bytes):
+        contents = journald_conf.decode('utf-8')
+    else:
+        contents = journald_conf
+    contents = contents.replace(up_ratelimit, '') + up_ratelimit
+    session_multihost.client[0].put_file_contents(j_config, contents)
+    session_multihost.client[0].run_command(
+        "systemctl daemon-reload", raiseonerr=False)
+    session_multihost.client[0].run_command(
+        "systemctl restart systemd-journald", raiseonerr=False)
+
+    def restore_journalsssd():
+        """ Restore journalsssd.conf """
+        bkup_cmd = f'cp -pZf /tmp/journald.conf.bkup {j_config}'
+        session_multihost.client[0].run_command(bkup_cmd)
+    request.addfinalizer(restore_journalsssd)
+
 @pytest.fixture(scope="session", autouse=True)
 # pylint: disable=unused-argument
 def setup_session(session_multihost, request, create_testdir):
