@@ -206,7 +206,7 @@ class Testautofsresponder(object):
         cmd = multihost.client[0].run_command(nfs_test, raiseonerr=False)
         assert cmd.returncode == 0
 
-    @pytest.mark.tier1_2
+    @pytest.mark.tier1_autofs_pause
     def test_two_automount_maps(self, multihost,
                                 backupsssdconf):
         """
@@ -294,6 +294,7 @@ class Testautofsresponder(object):
         time.sleep(2)
         MIT_export = multihost.client[0].run_command("ls /home/MIT")
         mit_export = multihost.client[0].run_command("ls /home/mit")
+        multihost.client[0].run_command("sleep 18000")
         restore = 'cp -af /etc/exports.backup /etc/exports'
         multihost.master[0].run_command(restore)
         multihost.client[0].run_command("systemctl stop autofs", raiseonerr=False)
